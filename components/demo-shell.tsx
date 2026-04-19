@@ -34,6 +34,7 @@ type ChoiceCardProps = {
 type MetricCardProps = {
   description: string;
   label: string;
+  steps?: string[];
   value: string;
 };
 
@@ -63,6 +64,13 @@ function countSourceNotes(notes: string) {
   }
 
   return notes.trim() ? 1 : 0;
+}
+
+function formatRouteSteps(route: string) {
+  return route
+    .split("->")
+    .map((step) => step.trim())
+    .filter(Boolean);
 }
 
 function decisionLabel(value: DemoResult["decision"]) {
@@ -178,13 +186,29 @@ function ChoiceCard({ active, description, onClick, title }: ChoiceCardProps) {
   );
 }
 
-function MetricCard({ description, label, value }: MetricCardProps) {
+function MetricCard({ description, label, steps, value }: MetricCardProps) {
   return (
     <Card className="border-border/70 bg-muted/25 shadow-none">
       <CardContent className="space-y-2 p-5">
         <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
         <p className="text-2xl font-semibold tracking-tight">{value}</p>
-        <p className="text-sm leading-6 text-muted-foreground">{description}</p>
+        <p className="text-sm leading-6 text-muted-foreground break-words">{description}</p>
+        {steps && steps.length > 1 ? (
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            {steps.map((step, index) => (
+              <div className="flex min-w-0 items-center gap-2" key={`${label}-${step}-${index}`}>
+                <span className="rounded-full border border-border/70 bg-background px-3 py-1 text-xs font-medium text-foreground break-all">
+                  {step}
+                </span>
+                {index < steps.length - 1 ? (
+                  <span className="text-xs text-muted-foreground" aria-hidden="true">
+                    →
+                  </span>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   );
@@ -339,7 +363,8 @@ export function DemoShell({
         {
           label: "Decision",
           value: decisionLabel(result.decision),
-          description: result.route,
+          description: result.route.includes("->") ? "Execution route" : result.route,
+          steps: result.route.includes("->") ? formatRouteSteps(result.route) : undefined,
         },
         {
           label: "Cost per 1,000",

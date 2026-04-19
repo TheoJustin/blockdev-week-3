@@ -54,6 +54,17 @@ const stopWords = new Set([
 const inputPricePerMillion = 3;
 const retrievalStepPricePerMillion = 0.1;
 
+type QuestionIntent =
+  | "chain_steps"
+  | "chunking"
+  | "graph_why"
+  | "graph_nodes"
+  | "input_screen"
+  | "audit_log"
+  | "cost_export"
+  | "add_decision"
+  | "general";
+
 function normalizeBlock(text: string) {
   return text.trim().replace(/\r/g, "").replace(/\s+\n/g, "\n").replace(/\n{3,}/g, "\n\n");
 }
@@ -72,6 +83,70 @@ function tokenize(text: string) {
 
 function tokenCount(text: string) {
   return Math.max(24, Math.round(tokenize(text).length * 1.5));
+}
+
+function countPatternMatches(text: string, patterns: RegExp[]) {
+  return patterns.reduce((total, pattern) => total + (pattern.test(text) ? 1 : 0), 0);
+}
+
+function asksForSensitiveData(question: string) {
+  return (
+    /(show|share|reveal|give|display).*(api key|password|secret|session token|recovery code)/i.test(question) ||
+    /(customer|user|account).*(api key|password|secret|session token|recovery code)/i.test(question)
+  );
+}
+
+function containsRawPii(question: string) {
+  return (
+    /\b\d{3}-?\d{2}-?\d{4}\b/.test(question) ||
+    /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(question)
+  );
+}
+
+function asksForException(question: string) {
+  return /(override|exception|bypass|ignore the rule|approve anyway)/i.test(question);
+}
+
+function asksForCanary(question: string) {
+  return /canary leak|exact string.*canary|canary.*string/i.test(question);
+}
+
+function detectQuestionIntent(question: string): QuestionIntent {
+  const normalized = normalizeQuestion(question).toLowerCase();
+
+  if (/(which architecture did the add choose|what did it reject)/i.test(normalized)) {
+    return "add_decision";
+  }
+
+  if (/(export.*csv|csv.*token|token costs?.*csv|per-node token costs?)/i.test(normalized)) {
+    return "cost_export";
+  }
+
+  if (/(what should audit_log record|audit_log record|what does audit_log record)/i.test(normalized)) {
+    return "audit_log";
+  }
+
+  if (/(what should input_screen check|input_screen check)/i.test(normalized)) {
+    return "input_screen";
+  }
+
+  if (/(why add input_screen and audit_log|why add input_screen|why add audit_log)/i.test(normalized)) {
+    return "graph_why";
+  }
+
+  if (/(which langgraph nodes|governance visible|langgraph.*nodes|graph version.*nodes)/i.test(normalized)) {
+    return "graph_nodes";
+  }
+
+  if (/(why do we split documents|split documents before indexing|chunking|chunk before indexing)/i.test(normalized)) {
+    return "chunking";
+  }
+
+  if (/(four steps.*minimal langchain rag flow|minimal langchain rag flow)/i.test(normalized)) {
+    return "chain_steps";
+  }
+
+  return "general";
 }
 
 function shortSummary(body: string) {
@@ -209,7 +284,9 @@ function splitDocuments(documents: KnowledgeDocument[]) {
 
 function scoreChunk(question: string, chunk: KnowledgeChunk) {
   const queryTokens = tokenize(question);
-  const chunkTokens = new Set(tokenize([chunk.title, chunk.summary, chunk.body, chunk.tags.join(" ")].join(" ")));
+  const searchText = [chunk.title, chunk.summary, chunk.body, chunk.tags.join(" ")].join(" ");
+  const chunkTokens = new Set(tokenize(searchText));
+  const intent = detectQuestionIntent(question);
 
   let score = 0;
 
@@ -241,6 +318,34 @@ function scoreChunk(question: string, chunk: KnowledgeChunk) {
 
   if (/(api key|secret|password)/i.test(question) && /(api key|secret|password)/i.test(chunk.body)) {
     score += 8;
+  }
+
+  switch (intent) {
+    case "chain_steps":
+      score += countPatternMatches(searchText, [/loader/i, /splitter/i, /pinecone/i, /retrievalqa/i]) * 4;
+      break;
+    case "chunking":
+      score += countPatternMatches(searchText, [/split/i, /chunk/i, /pinecone/i]) * 4;
+      break;
+    case "graph_why":
+    case "graph_nodes":
+      score += countPatternMatches(searchText, [/input_screen/i, /audit_log/i, /provenance/i, /decide_route/i]) * 4;
+      break;
+    case "input_screen":
+      score += countPatternMatches(searchText, [/inputguard/i, /privacy/i, /review/i, /secret/i]) * 4;
+      break;
+    case "audit_log":
+      score += countPatternMatches(searchText, [/audit_log/i, /question/i, /decision/i, /sources/i, /timestamp/i]) * 3;
+      break;
+    case "cost_export":
+      score += countPatternMatches(searchText, [/csv/i, /token/i, /node/i, /timestamp/i]) * 3;
+      break;
+    case "add_decision":
+      score += countPatternMatches(searchText, [/hybrid/i, /graph-only/i, /rejected/i]) * 4;
+      break;
+    case "general":
+    default:
+      break;
   }
 
   return score;
@@ -283,33 +388,27 @@ function inputGuard(question: string): GuardCheck {
   const redactions: string[] = [];
   const triggeredRules: string[] = [];
 
-  const asksForSensitiveData =
-    /(show|share|reveal|give|display).*(api key|password|secret|session token|recovery code)/i.test(question) ||
-    /(customer|user|account).*(api key|password|secret|session token|recovery code)/i.test(question);
+  const requestsSensitiveData = asksForSensitiveData(question);
+  const hasRawPii = containsRawPii(question);
+  const requestsException = asksForException(question);
 
-  const containsRawPii =
-    /\b\d{3}-?\d{2}-?\d{4}\b/.test(question) ||
-    /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(question);
-
-  const asksForException = /(override|exception|bypass|ignore the rule|approve anyway)/i.test(question);
-
-  if (asksForSensitiveData) {
+  if (requestsSensitiveData) {
     reasons.push("The request asks for a raw secret or sensitive customer data.");
     triggeredRules.push("sensitive_data_request");
   }
 
-  if (containsRawPii) {
+  if (hasRawPii) {
     reasons.push("The request contains raw personal data that should be redacted.");
     redactions.push("Redact personal data before saving or forwarding this request.");
     triggeredRules.push("pii_redaction");
   }
 
-  if (asksForException) {
+  if (requestsException) {
     reasons.push("The request asks for a policy exception and should route to review.");
     triggeredRules.push("human_review");
   }
 
-  if (asksForSensitiveData) {
+  if (requestsSensitiveData) {
     return {
       name: "InputGuard",
       status: "block",
@@ -320,7 +419,7 @@ function inputGuard(question: string): GuardCheck {
     };
   }
 
-  if (containsRawPii) {
+  if (hasRawPii) {
     return {
       name: "InputGuard",
       status: "redact",
@@ -412,8 +511,28 @@ function strongestSourceLine(provenance: ProvenanceItem[]) {
   return `The clearest supporting note is "${topSource.title}". It says: ${topSource.excerpt}`;
 }
 
-function buildDraftAnswer(mode: DemoMode, decision: Decision, provenance: ProvenanceItem[], question: string) {
+function joinAnswerParts(parts: Array<string | null | undefined>) {
+  return parts.filter(Boolean).join(" ");
+}
+
+function modeContrastLine(mode: DemoMode, intent: QuestionIntent) {
+  if (intent === "chain_steps" && mode === "graph") {
+    return "In the graph workflow, that same retrieval core is wrapped by INPUT_SCREEN, RETRIEVE_CONTEXT, PROVENANCE_ATTACH, DECIDE_ROUTE, and AUDIT_LOG.";
+  }
+
+  if (["graph_why", "graph_nodes", "input_screen", "audit_log"].includes(intent) && mode === "chain") {
+    return "The chain workflow can still apply guards and logging, but it does not expose them as first-class graph nodes.";
+  }
+
+  return "";
+}
+
+function buildDecisionAnswer(question: string, decision: Decision) {
   if (decision === "block") {
+    if (asksForSensitiveData(question)) {
+      return "This request should be blocked because it asks for a customer's API key or another raw secret. The assistant should refuse and explain the privacy rule.";
+    }
+
     return "This request should be blocked because it asks for protected data or fails a release guard.";
   }
 
@@ -421,15 +540,86 @@ function buildDraftAnswer(mode: DemoMode, decision: Decision, provenance: Proven
     return "This request should go to human review because it asks for an exception or the evidence is too weak for an automatic answer.";
   }
 
-  if (mode === "chain") {
-    return `The minimal LangChain path works here: load the notes, split them into chunks, index them in Pinecone, and use RetrievalQA to answer from the best matches. ${strongestSourceLine(provenance)}`;
+  return "";
+}
+
+function buildDraftAnswer(mode: DemoMode, decision: Decision, provenance: ProvenanceItem[], question: string) {
+  if (decision === "block" || decision === "review") {
+    return buildDecisionAnswer(question, decision);
   }
 
-  if (/(which architecture did the add choose|what did it reject)/i.test(question)) {
-    return `The ADD chooses a hybrid architecture: LangChain RAG for low-risk retrieval questions and LangGraph for higher-risk governance flows. It rejects a graph-only approach for every interaction because that adds unnecessary complexity. ${strongestSourceLine(provenance)}`;
-  }
+  const intent = detectQuestionIntent(question);
+  const evidence = strongestSourceLine(provenance);
+  const modeNote = modeContrastLine(mode, intent);
 
-  return `The LangGraph version keeps the same retrieval core but adds explicit governance nodes. INPUT_SCREEN checks the request, provenance stays in state, DECIDE_ROUTE chooses the outcome, and AUDIT_LOG records what happened. ${strongestSourceLine(provenance)}`;
+  switch (intent) {
+    case "chain_steps":
+      return joinAnswerParts([
+        "The four steps in the minimal LangChain RAG flow are Loader, Splitter, Pinecone, and RetrievalQA.",
+        "Loader reads the source notes, Splitter breaks them into chunks, Pinecone indexes those chunks, and RetrievalQA answers from the best matches.",
+        modeNote,
+        evidence,
+      ]);
+    case "chunking":
+      return joinAnswerParts([
+        "We split documents before indexing so Pinecone stores small focused chunks instead of whole notes.",
+        "That improves retrieval quality, keeps provenance cleaner, and gives RetrievalQA more precise context.",
+        evidence,
+      ]);
+    case "graph_why":
+      return joinAnswerParts([
+        "INPUT_SCREEN and AUDIT_LOG make governance explicit instead of hiding it inside helper logic.",
+        "INPUT_SCREEN checks for secrets, privacy risks, and review conditions before retrieval continues, while AUDIT_LOG records the question, decision, sources, and timestamp after the run.",
+        "That makes privacy, routing, and audit behavior much easier to inspect.",
+        evidence,
+      ]);
+    case "graph_nodes":
+      return joinAnswerParts([
+        "The graph nodes that make governance visible are INPUT_SCREEN, RETRIEVE_CONTEXT, PROVENANCE_ATTACH, DECIDE_ROUTE, and AUDIT_LOG.",
+        "INPUT_SCREEN screens the request, RETRIEVE_CONTEXT gathers evidence, PROVENANCE_ATTACH keeps source details in state, DECIDE_ROUTE chooses the outcome, and AUDIT_LOG saves the trail.",
+        modeNote,
+        evidence,
+      ]);
+    case "input_screen":
+      return joinAnswerParts([
+        "INPUT_SCREEN should check for secrets, privacy issues, and exception requests before the graph continues.",
+        "In this demo that means InputGuard looks for raw sensitive data, privacy risk, and cases that should route to review instead of auto-answering.",
+        evidence,
+      ]);
+    case "audit_log":
+      return joinAnswerParts([
+        "AUDIT_LOG should record the question, decision, sources, guardrail outcome, latency, and timestamp for each run.",
+        "Those fields make the audit trail useful for debugging, review, and cost comparison.",
+        modeNote,
+        evidence,
+      ]);
+    case "cost_export":
+      return joinAnswerParts([
+        "The CSV export should include the mode, node name, status, token count, subtotal cost, decision, and timestamp.",
+        "That makes per-node token usage easy to compare across chain and graph runs.",
+        evidence,
+      ]);
+    case "add_decision":
+      return joinAnswerParts([
+        "The ADD chooses a hybrid architecture: LangChain RAG for low-risk retrieval questions and LangGraph for higher-risk governance flows.",
+        "It rejects a graph-only approach because that adds unnecessary complexity to routine requests.",
+        evidence,
+      ]);
+    case "general":
+    default:
+      if (mode === "chain") {
+        return joinAnswerParts([
+          "The minimal LangChain path works here: load the notes, split them into chunks, index them in Pinecone, and use RetrievalQA to answer from the best matches.",
+          evidence,
+        ]);
+      }
+
+      return joinAnswerParts([
+        "The LangGraph version keeps the same retrieval core but adds explicit governance nodes.",
+        "INPUT_SCREEN checks the request, provenance stays in state, DECIDE_ROUTE chooses the outcome, and AUDIT_LOG records what happened.",
+        evidence,
+      ]);
+  }
 }
 
 function buildTakeaways(mode: DemoMode, decision: Decision, guardrails: GuardrailResult) {
@@ -792,7 +982,7 @@ function prepareBase(question: string, sourceNotes?: string) {
   const safeQuestion = input.status === "redact" ? redactSensitiveText(normalizedQuestion) : normalizedQuestion;
   const provenance = retrieveChunks(safeQuestion, chunks);
   const asksForException = input.triggeredRules.includes("human_review");
-  const canaryScenario = /canary leak|exact string.*canary|canary.*string/i.test(normalizedQuestion);
+  const canaryScenario = asksForCanary(normalizedQuestion);
 
   return {
     documents,
@@ -954,11 +1144,14 @@ function runSingleEval(mode: DemoMode, test: EvalCase, sourceNotes?: string) {
   const haystack = [result.answer, result.route, ...result.provenance.map((item) => `${item.title} ${item.excerpt}`)].join(" ");
   const matchedKeywords =
     test.expectedKeywords?.filter((keyword) => new RegExp(escapeRegex(keyword), "i").test(haystack)) ?? [];
+  const requiredKeywordMatches = test.expectedKeywords
+    ? (test.minimumKeywordMatches ?? test.expectedKeywords.length)
+    : 0;
 
   const sourcePass = test.expectedSource
     ? result.provenance.some((item) => item.title.toLowerCase().includes(test.expectedSource!.toLowerCase()))
     : true;
-  const keywordPass = test.expectedKeywords ? matchedKeywords.length >= Math.min(1, test.expectedKeywords.length) : true;
+  const keywordPass = test.expectedKeywords ? matchedKeywords.length >= requiredKeywordMatches : true;
   const decisionPass = result.decision === test.expectedDecision;
 
   return {

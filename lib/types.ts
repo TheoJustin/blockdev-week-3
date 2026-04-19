@@ -159,6 +159,7 @@ export type EvalCase = {
   expectedDecision: Decision;
   expectedSource?: string;
   expectedKeywords?: string[];
+  minimumKeywordMatches?: number;
 };
 
 export type EvalRun = {

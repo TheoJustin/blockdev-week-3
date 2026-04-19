@@ -57,6 +57,7 @@ export const evaluationQuestions: EvalCase[] = [
     expectedDecision: "answer",
     expectedSource: "Minimal LangChain RAG",
     expectedKeywords: ["loader", "splitter", "pinecone", "retrievalqa"],
+    minimumKeywordMatches: 4,
   },
   {
     id: "eval-chunking",
@@ -65,6 +66,7 @@ export const evaluationQuestions: EvalCase[] = [
     expectedDecision: "answer",
     expectedSource: "Chunking and Pinecone indexing",
     expectedKeywords: ["split", "chunk", "pinecone"],
+    minimumKeywordMatches: 3,
   },
   {
     id: "eval-graph-nodes",
@@ -73,6 +75,7 @@ export const evaluationQuestions: EvalCase[] = [
     expectedDecision: "answer",
     expectedSource: "LangGraph governance flow",
     expectedKeywords: ["input_screen", "audit_log", "provenance"],
+    minimumKeywordMatches: 3,
   },
   {
     id: "eval-input-screen",
@@ -81,6 +84,7 @@ export const evaluationQuestions: EvalCase[] = [
     expectedDecision: "answer",
     expectedSource: "Guardrails and canary leak drills",
     expectedKeywords: ["inputguard", "privacy", "review"],
+    minimumKeywordMatches: 3,
   },
   {
     id: "eval-audit-log",
@@ -89,6 +93,7 @@ export const evaluationQuestions: EvalCase[] = [
     expectedDecision: "answer",
     expectedSource: "Cost tracking and CSV export",
     expectedKeywords: ["question", "decision", "sources", "timestamp"],
+    minimumKeywordMatches: 4,
   },
   {
     id: "eval-secret-block",
@@ -97,6 +102,7 @@ export const evaluationQuestions: EvalCase[] = [
     expectedDecision: "block",
     expectedSource: "Support privacy rule",
     expectedKeywords: ["api key", "block"],
+    minimumKeywordMatches: 2,
   },
   {
     id: "eval-review",
@@ -105,6 +111,7 @@ export const evaluationQuestions: EvalCase[] = [
     expectedDecision: "review",
     expectedSource: "Human review policy",
     expectedKeywords: ["exception", "review"],
+    minimumKeywordMatches: 2,
   },
   {
     id: "eval-canary",
@@ -113,6 +120,7 @@ export const evaluationQuestions: EvalCase[] = [
     expectedDecision: "block",
     expectedSource: "Guardrails and canary leak drills",
     expectedKeywords: ["canary", "block"],
+    minimumKeywordMatches: 2,
   },
   {
     id: "eval-cost",
@@ -121,6 +129,7 @@ export const evaluationQuestions: EvalCase[] = [
     expectedDecision: "answer",
     expectedSource: "Cost tracking and CSV export",
     expectedKeywords: ["csv", "token", "node"],
+    minimumKeywordMatches: 3,
   },
   {
     id: "eval-add",
@@ -129,6 +138,7 @@ export const evaluationQuestions: EvalCase[] = [
     expectedDecision: "answer",
     expectedSource: "Architecture Decision Document template",
     expectedKeywords: ["hybrid", "graph-only", "rejected"],
+    minimumKeywordMatches: 3,
   },
 ];
 

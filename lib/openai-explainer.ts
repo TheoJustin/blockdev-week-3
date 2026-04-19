@@ -95,7 +95,7 @@ export async function addOpenAIExplanation(baseResult: DemoResult): Promise<Demo
             {
               type: "input_text",
               text:
-                "You explain AI architecture to developers in plain language. Keep answers concrete, short, and easy to understand. Do not invent sources. Use simple wording.",
+                "You explain AI architecture to developers in plain language. Keep answers concrete, short, and easy to understand. Do not invent sources. Use simple wording. Treat the fallback answer as the factual ground truth. Do not replace technical names, step names, node names, or architecture labels with different ones.",
             },
           ],
         },
@@ -117,6 +117,7 @@ export async function addOpenAIExplanation(baseResult: DemoResult): Promise<Demo
                     `${index + 1}. ${item.title} (${item.sensitivity}) -> ${item.excerpt}`,
                 ),
                 `Fallback answer: ${baseResult.answer}`,
+                "Rewrite the fallback answer for clarity, but preserve its facts exactly.",
                 "Return a short answer, 3 or 4 short takeaways, and one operator note.",
               ].join("\n"),
             },
