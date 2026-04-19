@@ -1,27 +1,15 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useDeferredValue, useState, useTransition } from "react";
-import {
-  ArrowRight,
-  Download,
-  RefreshCw,
-  Shield,
-  Sparkles,
-  Target,
-  Workflow,
-} from "lucide-react";
+import { Download, RefreshCw, Sparkles, Workflow } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import type {
-  AddSection,
-  ComparisonRow,
   DemoMode,
   DemoOverview,
   DemoResult,
@@ -31,8 +19,6 @@ import type {
 } from "@/lib/types";
 
 type DemoShellProps = {
-  addSections: AddSection[];
-  comparisonRows: ComparisonRow[];
   defaultSourceNotes: string;
   phases: PresentationPhase[];
   scenarios: string[];
@@ -95,7 +81,7 @@ function decisionLabel(value: DemoResult["decision"]) {
 }
 
 function runtimeLabel(value: DemoRuntime) {
-  return value === "openai" ? "OpenAI polished answer" : "Built-in answer";
+  return value === "openai" ? "OpenAI response" : "Local response";
 }
 
 function decisionVariant(value: DemoResult["decision"]): BadgeProps["variant"] {
@@ -205,8 +191,6 @@ function MetricCard({ description, label, value }: MetricCardProps) {
 }
 
 export function DemoShell({
-  addSections,
-  comparisonRows,
   defaultSourceNotes,
   phases,
   scenarios,
@@ -259,12 +243,12 @@ export function DemoShell({
 
   async function runDemo(nextMode: DemoMode) {
     if (!question.trim()) {
-      setError("Add a question before running the demo.");
+      setError("Add a question before running the workflow.");
       return;
     }
 
     if (!sourceNotes.trim()) {
-      setError("Add at least one source note before running the demo.");
+      setError("Add at least one source note before running the workflow.");
       return;
     }
 
@@ -294,7 +278,7 @@ export function DemoShell({
       };
 
       if (!response.ok || !payload.result) {
-        throw new Error(payload.error ?? "The demo request failed.");
+        throw new Error(payload.error ?? "The workflow request failed.");
       }
 
       startTransition(() => {
@@ -347,8 +331,8 @@ export function DemoShell({
 
   const modeDescription =
     mode === "chain"
-      ? "Loader -> splitter -> Pinecone -> RetrievalQA."
-      : "The same retrieval core, now wrapped in visible governance nodes.";
+      ? "Minimal retrieval path: Loader -> splitter -> Pinecone -> RetrievalQA."
+      : "The same retrieval path with explicit INPUT_SCREEN, provenance, and AUDIT_LOG nodes.";
 
   const summaryMetrics = result
     ? [
@@ -365,7 +349,7 @@ export function DemoShell({
         {
           label: "Sources",
           value: String(result.provenance.length),
-          description: result.usedSampleNotes ? "Sample corpus" : "Custom source notes",
+          description: result.usedSampleNotes ? "Reference corpus" : "Custom source notes",
         },
         {
           label: "Guardrails",
@@ -393,15 +377,15 @@ export function DemoShell({
             <CardContent className="space-y-8 p-8 sm:p-10">
               <div className="space-y-4">
                 <Badge className="w-fit rounded-full" variant="outline">
-                  Cleaner live demo
+                  Workflow workspace
                 </Badge>
                 <h1 className="max-w-4xl text-4xl font-semibold tracking-tight sm:text-5xl">
-                  One control panel, one result panel, one easy story.
+                  Run the workflow and inspect the output in one place.
                 </h1>
                 <p className="max-w-3xl text-base leading-7 text-muted-foreground sm:text-lg">
-                  The layout is now built to keep the output obvious. Run the question on the left,
-                  read the answer on the right, then switch between summary, flow, guardrails, cost,
-                  and audit views without scrolling through a long wall of cards.
+                  Use the left panel to choose the architecture, runtime, and question. Use the
+                  right panel to review the answer, source provenance, guardrails, cost, and audit
+                  trail without hunting through a long page.
                 </p>
               </div>
 
@@ -426,19 +410,19 @@ export function DemoShell({
           <Card className="border-border/70 bg-card/95">
             <CardHeader>
               <Badge className="w-fit rounded-full" variant="secondary">
-                Start here
+                Workflow overview
               </Badge>
-              <CardTitle className="text-2xl">Best live path</CardTitle>
+              <CardTitle className="text-2xl">Typical run order</CardTitle>
               <CardDescription className="text-sm leading-6">
-                Keep the first demo pass simple and predictable.
+                Follow the same path an operator would use to inspect a run.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               {[
-                "Run the first RAG question with the chain.",
-                "Switch to the graph for the governance question.",
-                "Use the canary drill to prove the block path.",
-                "Open the cost or audit view only when the audience asks.",
+                "Choose the architecture you want to inspect.",
+                "Pick local or OpenAI response generation.",
+                "Select a saved question or write your own.",
+                "Run the workflow and review answer, sources, and audit data.",
               ].map((item, index) => (
                 <div className="flex items-start gap-3 rounded-2xl border border-border/70 bg-muted/20 p-4" key={item}>
                   <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-background text-xs font-semibold text-muted-foreground">
@@ -460,10 +444,10 @@ export function DemoShell({
                     <Badge className="w-fit rounded-full" variant="outline">
                       Control panel
                     </Badge>
-                    <CardTitle className="mt-3 text-2xl">Set up the run</CardTitle>
+                    <CardTitle className="mt-3 text-2xl">Configure the run</CardTitle>
                     <CardDescription className="mt-2 text-sm leading-6">
-                      Keep the setup small: choose the path, choose the runtime, choose the
-                      question, then run it.
+                      Choose an architecture, choose a runtime, select a question, and run the
+                      selected workflow.
                     </CardDescription>
                   </div>
                   <Badge className="rounded-full" variant="secondary">
@@ -478,13 +462,13 @@ export function DemoShell({
                   <div className="flex flex-col gap-3 sm:flex-row">
                     <ChoiceCard
                       active={mode === "chain"}
-                      description="Best for the minimal RAG path."
+                      description="Minimal retrieval pipeline."
                       onClick={() => setMode("chain")}
                       title="LangChain RAG"
                     />
                     <ChoiceCard
                       active={mode === "graph"}
-                      description="Best for visible governance and routing."
+                      description="Retrieval pipeline with explicit governance nodes."
                       onClick={() => setMode("graph")}
                       title="LangGraph flow"
                     />
@@ -497,22 +481,32 @@ export function DemoShell({
                   <div className="flex flex-col gap-3 sm:flex-row">
                     <ChoiceCard
                       active={runtime === "local"}
-                      description="Stable and easy to rehearse"
+                      description="Uses the built-in explainer on the server"
                       onClick={() => setRuntime("local")}
-                      title="Built-in answer"
+                      title="Local response"
                     />
                     <ChoiceCard
                       active={runtime === "openai"}
                       description={openaiConfigured ? openaiModel : "Falls back if no key is set"}
                       onClick={() => setRuntime("openai")}
-                      title="OpenAI polished answer"
+                      title="OpenAI response"
                     />
+                  </div>
+                  <div className="rounded-2xl border border-border/70 bg-muted/20 px-4 py-4">
+                    <p className="text-sm font-medium text-foreground">
+                      Runtime status: {openaiConfigured ? "OpenAI available" : "Local-only mode"}
+                    </p>
+                    <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                      {openaiConfigured
+                        ? `Server model: ${openaiModel}`
+                        : "The app still works without OPENAI_API_KEY. OpenAI mode only changes the final explanation."}
+                    </p>
                   </div>
                 </div>
 
                 <div className="space-y-3">
                   <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm font-medium text-foreground">Presentation questions</p>
+                    <p className="text-sm font-medium text-foreground">Saved questions</p>
                     <Badge className="rounded-full" variant="outline">
                       {scenarios.length} samples
                     </Badge>
@@ -557,15 +551,15 @@ export function DemoShell({
                     <div>
                       <p className="text-sm font-medium text-foreground">Source notes</p>
                       <p className="mt-1 text-sm text-muted-foreground">
-                        Hidden by default so the main demo stays clean.
+                        Optional reference corpus used for retrieval and provenance.
                       </p>
                     </div>
                     <div className="flex gap-2">
                       <Button onClick={() => setShowSourceNotes((value) => !value)} size="sm" variant="outline">
-                        {showSourceNotes ? "Hide notes" : "Show notes"}
+                        {showSourceNotes ? "Hide corpus" : "Show corpus"}
                       </Button>
                       <Button onClick={() => setSourceNotes(defaultSourceNotes)} size="sm" variant="outline">
-                        Reset
+                        Reset corpus
                       </Button>
                     </div>
                   </div>
@@ -580,42 +574,26 @@ export function DemoShell({
                     />
                   ) : (
                     <div className="rounded-2xl border border-dashed border-border bg-muted/15 px-4 py-4 text-sm text-muted-foreground">
-                      Source notes are tucked away to keep the demo focused. Open them only when you
-                      want to show the underlying corpus.
+                      Source notes stay hidden until you need to inspect or edit the retrieval
+                      corpus.
                     </div>
                   )}
                 </div>
 
-                <div className="flex flex-col gap-3 sm:flex-row">
+                <div className="flex flex-col gap-3">
                   <Button
-                    className="rounded-full sm:flex-1"
+                    className="rounded-full"
                     disabled={isRunning}
-                    onClick={() => runDemo("chain")}
+                    onClick={() => runDemo(mode)}
                     size="lg"
                   >
-                    {isRunning && mode === "chain" ? (
+                    {isRunning ? (
                       <>
                         <RefreshCw className="h-4 w-4 animate-spin" />
-                        Running chain...
+                        Running workflow...
                       </>
                     ) : (
-                      "Run LangChain RAG"
-                    )}
-                  </Button>
-                  <Button
-                    className="rounded-full sm:flex-1"
-                    disabled={isRunning}
-                    onClick={() => runDemo("graph")}
-                    size="lg"
-                    variant="secondary"
-                  >
-                    {isRunning && mode === "graph" ? (
-                      <>
-                        <RefreshCw className="h-4 w-4 animate-spin" />
-                        Running graph...
-                      </>
-                    ) : (
-                      "Run LangGraph flow"
+                      `Run ${mode === "chain" ? "LangChain" : "LangGraph"} workflow`
                     )}
                   </Button>
                 </div>
@@ -628,56 +606,6 @@ export function DemoShell({
               </CardContent>
             </Card>
 
-            <Card className="border-border/70 bg-card/95">
-              <CardHeader>
-                <Badge className="w-fit rounded-full" variant="outline">
-                  Quick shortcuts
-                </Badge>
-                <CardTitle className="text-2xl">Phase 3 buttons</CardTitle>
-                <CardDescription className="text-sm leading-6">
-                  These make it easy to jump straight to the most useful live moments.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid gap-3">
-                  <Button className="justify-start rounded-2xl" onClick={() => applyScenario(scenarios[0] ?? "")} variant="outline">
-                    Use safe RAG question
-                  </Button>
-                  <Button className="justify-start rounded-2xl" onClick={() => applyScenario(scenarios[2] ?? "")} variant="outline">
-                    <Shield className="h-4 w-4" />
-                    Load API key block
-                  </Button>
-                  <Button className="justify-start rounded-2xl" onClick={() => applyScenario(scenarios[3] ?? "")} variant="outline">
-                    <Target className="h-4 w-4" />
-                    Load canary drill
-                  </Button>
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-2">
-                  <MetricCard
-                    description="Built-in evaluation suite"
-                    label="Chain accuracy"
-                    value={overview ? `${overview.evaluations.chain.accuracy}%` : "--"}
-                  />
-                  <MetricCard
-                    description="Built-in evaluation suite"
-                    label="Graph accuracy"
-                    value={overview ? `${overview.evaluations.graph.accuracy}%` : "--"}
-                  />
-                </div>
-
-                <div className="rounded-2xl border border-border/70 bg-muted/20 px-4 py-4">
-                  <p className="text-sm font-medium text-foreground">
-                    OpenAI status: {openaiConfigured ? "ready" : "optional"}
-                  </p>
-                  <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                    {openaiConfigured
-                      ? `Server-side model: ${openaiModel}`
-                      : "The demo still works cleanly without a key. The key only changes the answer wording."}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
           </div>
 
           <div className="lg:sticky lg:top-24 lg:self-start">
@@ -689,11 +617,10 @@ export function DemoShell({
                       Result panel
                     </Badge>
                     <CardTitle className="mt-3 text-2xl">
-                      {result ? "Read the latest run" : "Run a demo to populate the output"}
+                      {result ? "Latest output" : "Run the workflow to generate output"}
                     </CardTitle>
                     <CardDescription className="mt-2 max-w-2xl text-sm leading-6">
-                      The output is intentionally grouped into one clean panel so the answer is never
-                      buried under the supporting detail.
+                      The answer, evidence, controls, and audit trail stay together in one place.
                     </CardDescription>
                   </div>
 
@@ -722,7 +649,7 @@ export function DemoShell({
                           <div>
                             <CardTitle className="text-2xl">Answer</CardTitle>
                             <CardDescription className="mt-2 text-sm leading-6 text-primary-foreground/75">
-                              This is the part you should read first in the live demo.
+                              Primary response returned by the workflow.
                             </CardDescription>
                           </div>
                           <Badge className="rounded-full border-primary-foreground/15 bg-primary-foreground/10 text-primary-foreground">
@@ -773,9 +700,9 @@ export function DemoShell({
                         <div className="space-y-6">
                           <Card className="border-border/70 bg-muted/20 shadow-none">
                             <CardHeader>
-                              <CardTitle className="text-lg">Why this answer makes sense</CardTitle>
+                              <CardTitle className="text-lg">Answer summary</CardTitle>
                               <CardDescription className="text-sm leading-6">
-                                Use these points as your short talk track.
+                                Short explanation of the route, evidence, and decision.
                               </CardDescription>
                             </CardHeader>
                             <CardContent className="space-y-3">
@@ -792,11 +719,11 @@ export function DemoShell({
 
                           <Card className="border-border/70 bg-muted/20 shadow-none">
                             <CardHeader>
-                              <CardTitle className="text-lg">Speaker tip</CardTitle>
+                              <CardTitle className="text-lg">Operator note</CardTitle>
                             </CardHeader>
                             <CardContent>
                               <div className="rounded-2xl border border-border/70 bg-background px-4 py-4 text-sm leading-7 text-muted-foreground">
-                                {result.speakerTip}
+                                {result.speakerTip.replace(/^Talk track:\s*/i, "")}
                               </div>
                             </CardContent>
                           </Card>
@@ -863,13 +790,13 @@ export function DemoShell({
                     ) : null}
 
                     {activePanel === "flow" ? (
-                      <Card className="border-border/70 bg-muted/20 shadow-none">
-                        <CardHeader>
-                          <CardTitle className="text-lg">Workflow nodes</CardTitle>
-                          <CardDescription className="text-sm leading-6">
-                            This is the cleanest view for explaining how the request moved through the system.
-                          </CardDescription>
-                        </CardHeader>
+                        <Card className="border-border/70 bg-muted/20 shadow-none">
+                          <CardHeader>
+                            <CardTitle className="text-lg">Workflow nodes</CardTitle>
+                            <CardDescription className="text-sm leading-6">
+                              Inspect how the request moved through the system step by step.
+                            </CardDescription>
+                          </CardHeader>
                         <CardContent className="space-y-4">
                           {result.pipeline.map((node) => (
                             <div className="flex gap-4" key={node.id}>
@@ -974,8 +901,8 @@ export function DemoShell({
                               </p>
                               <p className="text-sm leading-6 text-muted-foreground">
                                 {result.guardrails.canaryTriggered
-                                  ? "This is the cleanest proof point for the guardrail story: retrieval found the sensitive text, but release still stopped."
-                                  : "Load the canary drill question when you want to prove the release block path."}
+                                  ? "The system retrieved the sensitive text, but release still stopped before the response left the workflow."
+                                  : "Use the canary scenario when you want to confirm that release is blocked even if retrieval succeeds."}
                               </p>
                             </div>
                           </CardContent>
@@ -987,12 +914,12 @@ export function DemoShell({
                       <div className="space-y-6">
                         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                           <MetricCard
-                            description={overview?.slideEstimate.note ?? "Presentation benchmark"}
+                            description={overview?.slideEstimate.note ?? "Reference benchmark"}
                             label="Chain benchmark"
                             value={overview ? formatMoney(overview.slideEstimate.chainPer1000) : "--"}
                           />
                           <MetricCard
-                            description={overview?.slideEstimate.note ?? "Presentation benchmark"}
+                            description={overview?.slideEstimate.note ?? "Reference benchmark"}
                             label="Graph benchmark"
                             value={overview ? formatMoney(overview.slideEstimate.graphPer1000) : "--"}
                           />
@@ -1087,7 +1014,7 @@ export function DemoShell({
                               <div>
                                 <CardTitle className="text-lg">Recent runs</CardTitle>
                                 <CardDescription className="text-sm leading-6">
-                                  Use this when you want to prove the site is writing history.
+                                  Review the recent run history written by the audit trail.
                                 </CardDescription>
                               </div>
                               <Button onClick={() => void refreshAppState()} size="sm" variant="outline">
@@ -1099,7 +1026,7 @@ export function DemoShell({
                           <CardContent className="space-y-3">
                             {recent.length === 0 ? (
                               <div className="rounded-2xl border border-dashed border-border px-4 py-8 text-sm text-muted-foreground">
-                                Run the demo once and the audit history will appear here.
+                                Run the workflow once and the audit history will appear here.
                               </div>
                             ) : (
                               recent.map((record) => (
@@ -1148,7 +1075,7 @@ export function DemoShell({
           </div>
         </section>
 
-        <section className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+        <section className="grid gap-6">
           <Card className="border-border/70 bg-card/95">
             <CardHeader>
               <Badge className="w-fit rounded-full" variant="outline">
@@ -1156,8 +1083,8 @@ export function DemoShell({
               </Badge>
               <CardTitle className="text-2xl">Fire the 10 test questions and check the answers</CardTitle>
               <CardDescription className="text-sm leading-6">
-                This stays below the main workspace so it is available when you need it, but it does
-                not compete with the answer panel.
+                Keep the evaluation table below the main workspace so the primary run stays easy to
+                follow.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -1203,74 +1130,6 @@ export function DemoShell({
                   Loading the built-in evaluation suite.
                 </div>
               )}
-            </CardContent>
-          </Card>
-
-          <Card className="border-border/70 bg-card/95">
-            <CardHeader>
-              <div className="flex flex-wrap items-end justify-between gap-3">
-                <div>
-                  <Badge className="w-fit rounded-full" variant="outline">
-                    Phase 5 close
-                  </Badge>
-                  <CardTitle className="mt-3 text-2xl">Architecture Decision Document</CardTitle>
-                  <CardDescription className="mt-2 text-sm leading-6">
-                    Keep the ending short: what we chose, what we rejected, and why.
-                  </CardDescription>
-                </div>
-                <Link className={cn(buttonVariants({ size: "lg", variant: "outline" }), "rounded-full")} href="/add">
-                  Open full ADD
-                  <ArrowRight className="h-4 w-4" />
-                </Link>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="grid gap-3 md:grid-cols-2">
-                {addSections.map((section) => (
-                  <Card className="border-border/70 bg-muted/20 shadow-none" key={section.heading}>
-                    <CardContent className="space-y-3 p-5">
-                      <Badge
-                        className="w-fit rounded-full"
-                        variant={
-                          section.verdict === "chosen"
-                            ? "success"
-                            : section.verdict === "rejected"
-                              ? "destructive"
-                              : "secondary"
-                        }
-                      >
-                        {section.heading}
-                      </Badge>
-                      <p className="text-sm leading-6 text-muted-foreground">{section.body}</p>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-
-              <Separator />
-
-              <div className="rounded-2xl border border-border/70">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Dimension</TableHead>
-                      <TableHead>LangChain RAG</TableHead>
-                      <TableHead>LangGraph flow</TableHead>
-                      <TableHead>Recommendation</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {comparisonRows.map((row) => (
-                      <TableRow key={row.dimension}>
-                        <TableCell className="font-medium">{row.dimension}</TableCell>
-                        <TableCell className="text-muted-foreground">{row.chain}</TableCell>
-                        <TableCell className="text-muted-foreground">{row.graph}</TableCell>
-                        <TableCell className="text-muted-foreground">{row.recommendation}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
             </CardContent>
           </Card>
         </section>

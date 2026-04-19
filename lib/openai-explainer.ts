@@ -23,7 +23,7 @@ const explanationSchema = {
     },
     speakerTip: {
       type: "string",
-      description: "A one-sentence speaker note for a live demo.",
+      description: "A one-sentence operator note explaining what to notice in the result.",
     },
   },
 } as const;
@@ -95,7 +95,7 @@ export async function addOpenAIExplanation(baseResult: DemoResult): Promise<Demo
             {
               type: "input_text",
               text:
-                "You explain AI architecture to developers in plain language. Keep answers concrete, short, and easy to say out loud in a live demo. Do not invent sources. Use simple wording.",
+                "You explain AI architecture to developers in plain language. Keep answers concrete, short, and easy to understand. Do not invent sources. Use simple wording.",
             },
           ],
         },
@@ -117,7 +117,7 @@ export async function addOpenAIExplanation(baseResult: DemoResult): Promise<Demo
                     `${index + 1}. ${item.title} (${item.sensitivity}) -> ${item.excerpt}`,
                 ),
                 `Fallback answer: ${baseResult.answer}`,
-                "Return a short answer, 3 or 4 short takeaways, and one speaker tip.",
+                "Return a short answer, 3 or 4 short takeaways, and one operator note.",
               ].join("\n"),
             },
           ],

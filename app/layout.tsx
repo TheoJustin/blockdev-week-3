@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "LangChain + LangGraph Demo",
+  title: "LangChain + LangGraph Workbench",
   description:
-    "A Next.js demo site that follows a LangChain and LangGraph presentation phase by phase with a real developer support use case.",
+    "A Next.js workflow reference app that shows LangChain RAG, LangGraph governance, guardrails, cost tracking, and architecture decisions with a developer support use case.",
 };
 
 export default function RootLayout({

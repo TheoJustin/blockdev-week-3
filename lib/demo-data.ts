@@ -258,12 +258,6 @@ export const architectureChoices: ComparisonRow[] = [
     graph: "Higher token usage in exchange for more review and audit control.",
     recommendation: "Use the cheapest architecture that still gives the right governance guarantees.",
   },
-  {
-    dimension: "Teaching value",
-    chain: "Best for explaining RAG from scratch.",
-    graph: "Best for explaining explicit reasoning and governance state.",
-    recommendation: "Show both when the goal is architectural comparison, not just answer quality.",
-  },
 ];
 
 export const addSections: AddSection[] = [

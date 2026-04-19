@@ -19,7 +19,7 @@ const quickStory = [
 const demoHighlights = [
   {
     title: "Real questions",
-    description: "The sample prompts come from the talk itself, so the audience sees the same language on the site and in the presentation.",
+    description: "The sample prompts come from the actual workflow, so the examples on the site match the presentation.",
     icon: Target,
   },
   {
@@ -29,7 +29,7 @@ const demoHighlights = [
   },
   {
     title: "Real close",
-    description: "The ADD page turns the demo into a defendable architecture decision instead of ending on a vague opinion.",
+    description: "The ADD page turns the walkthrough into a defendable architecture decision instead of ending on a vague opinion.",
     icon: FileText,
   },
 ];
@@ -49,7 +49,7 @@ export default function HomePage() {
                 </Badge>
                 <div className="space-y-4">
                   <h1 className="max-w-4xl text-4xl font-semibold tracking-tight sm:text-5xl">
-                    A real demo site that follows the presentation phase by phase.
+                    A workflow reference app that follows the build plan phase by phase.
                   </h1>
                   <p className="max-w-3xl text-base leading-7 text-muted-foreground sm:text-lg">
                     This site is built for explaining one concrete story: start with a minimal
@@ -61,7 +61,7 @@ export default function HomePage() {
 
               <div className="flex flex-wrap gap-3">
                 <Link className={cn(buttonVariants({ size: "lg" }), "rounded-full")} href="/workbench">
-                  Open the live demo
+                  Open the workbench
                   <ArrowRight className="h-4 w-4" />
                 </Link>
                 <Link
@@ -180,9 +180,9 @@ export default function HomePage() {
               <Badge className="w-fit rounded-full" variant="outline">
                 Suggested walkthrough
               </Badge>
-              <CardTitle className="text-2xl">A simple talk track that matches the product</CardTitle>
+              <CardTitle className="text-2xl">A simple run order that matches the product</CardTitle>
               <CardDescription className="max-w-3xl text-sm leading-6">
-                If you want a clean live flow, this order will keep the story easy to follow.
+                If you want a clean walkthrough, this order keeps the workflow easy to follow.
               </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -217,7 +217,7 @@ export default function HomePage() {
                 className={cn(buttonVariants({ size: "lg", variant: "outline" }), "w-full rounded-full")}
                 href="/workbench"
               >
-                Open the demo
+                Open the workbench
                 <ArrowRight className="h-4 w-4" />
               </Link>
             </CardContent>

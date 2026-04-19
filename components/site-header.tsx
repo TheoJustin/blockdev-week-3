@@ -9,7 +9,7 @@ type SiteHeaderProps = {
 
 const navigation = [
   { href: "/", label: "Guide", value: "home" },
-  { href: "/workbench", label: "Demo", value: "workbench" },
+  { href: "/workbench", label: "Workbench", value: "workbench" },
   { href: "/add", label: "ADD", value: "add" },
 ] as const;
 
@@ -22,8 +22,8 @@ export function SiteHeader({ current }: SiteHeaderProps) {
             <Workflow className="h-4 w-4" />
           </span>
           <span className="flex flex-col">
-            <span className="text-sm font-semibold tracking-tight">LangChain + LangGraph Demo</span>
-            <span className="text-xs text-muted-foreground">Phase-by-phase teaching site</span>
+            <span className="text-sm font-semibold tracking-tight">LangChain + LangGraph Workbench</span>
+            <span className="text-xs text-muted-foreground">Workflow reference app</span>
           </span>
         </Link>
 

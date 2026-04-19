@@ -435,7 +435,7 @@ function buildDraftAnswer(mode: DemoMode, decision: Decision, provenance: Proven
 function buildTakeaways(mode: DemoMode, decision: Decision, guardrails: GuardrailResult) {
   const common = [
     "The same source pack powers both architectures, so the comparison stays fair.",
-    "Sources and guardrails stay visible, which makes the demo easier to defend.",
+    "Sources and guardrails stay visible, which makes the workflow easier to inspect and defend.",
   ];
 
   if (decision === "block") {
@@ -469,20 +469,20 @@ function buildTakeaways(mode: DemoMode, decision: Decision, guardrails: Guardrai
 
 function buildSpeakerTip(mode: DemoMode, decision: Decision, canaryScenario: boolean) {
   if (canaryScenario) {
-    return "Talk track: the model found the canary, but OutputGuard blocked the release, which is exactly what we want in production.";
+    return "The system retrieved the canary string, but OutputGuard blocked release before the response reached the user.";
   }
 
   if (decision === "block") {
-    return "Talk track: a production assistant is useful because it refuses unsafe requests, not because it answers everything.";
+    return "A production assistant should refuse unsafe requests instead of trying to answer everything.";
   }
 
   if (decision === "review") {
-    return "Talk track: the graph earns its keep when the product needs an explicit review branch.";
+    return "The graph path is useful when the product needs a visible review branch and audit trail.";
   }
 
   return mode === "chain"
-    ? "Talk track: Phase 1 is the smallest believable RAG system you can explain in one minute."
-    : "Talk track: Phase 2 keeps the same retrieval engine but makes governance visible in state.";
+    ? "This path keeps the system small: retrieval, answer generation, and source-backed output."
+    : "This path keeps the same retrieval core while exposing governance as explicit state and nodes.";
 }
 
 function nodeStatusFromDecision(decision: Decision) {
@@ -539,8 +539,8 @@ function buildCostEstimate(nodes: PipelineNode[], mode: DemoMode, decision: Deci
     latencyMs: mode === "chain" ? 1100 + nodes.length * 65 : (decision === "block" ? 1450 : 1900) + nodes.length * 75,
     breakdown,
     assumptions: [
-      "These are teaching estimates, not vendor invoices.",
-      "The chain model treats retrieval and answer generation as the main cost centers.",
+      "These are model-based estimates, not vendor invoices.",
+      "The chain path concentrates cost in retrieval and answer generation.",
       mode === "chain"
         ? "The chain stays cheaper because it has fewer explicit decision nodes."
         : "The graph costs more because screening, provenance, and audit are explicit nodes.",
@@ -827,7 +827,7 @@ function finalizeResult(
   const finalRoute = output.status === "block" ? "Blocked by OutputGuard" : route;
   const finalAnswer =
     output.status === "block"
-      ? "The draft was stopped before release because OutputGuard detected sensitive output. In this demo that usually means the canary leak drill worked as intended."
+      ? "The draft was stopped before release because OutputGuard detected sensitive output. In this workflow that usually means the canary leak drill worked as intended."
       : answer;
 
   const pipeline =
