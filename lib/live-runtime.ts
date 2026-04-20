@@ -163,6 +163,8 @@ type GraphWorkflowState = {
   answer: string;
   takeaways: string[];
   speakerTip: string;
+  draftAttempts: number;
+  redraftInstruction: string;
   output: GuardCheck | null;
 };
 
@@ -1156,6 +1158,55 @@ function fallbackSpeakerTip(mode: DemoMode, decision: Decision, canaryScenario: 
     : "This run used a real LangChain retrieval path with one answer model call.";
 }
 
+function outputRetryInstruction(output: GuardCheck) {
+  return [
+    "The previous draft was blocked by OutputGuard.",
+    ...output.reasons,
+    "Rewrite the answer so it stays helpful without repeating any exact secrets, raw credentials, or sensitive strings.",
+    "If needed, summarize the policy instead of quoting the risky value.",
+  ].join(" ");
+}
+
+function withOutputRetryRoute(route: string) {
+  if (route.includes("DRAFT_ANSWER (retry)")) {
+    return route;
+  }
+
+  return route.replace(
+    "DRAFT_ANSWER -> OUTPUT_GUARD -> AUDIT_LOG",
+    "DRAFT_ANSWER -> OUTPUT_GUARD -> DRAFT_ANSWER (retry) -> OUTPUT_GUARD -> AUDIT_LOG",
+  );
+}
+
+function shouldRetryAfterOutputGuard(state: GraphWorkflowState) {
+  return Boolean(
+    state.output?.status === "block" &&
+      !state.output.triggeredRules.includes("canary_leak") &&
+      state.decision !== "block" &&
+      state.decision !== "review" &&
+      state.draftAttempts < 2,
+  );
+}
+
+function usageForNodePrefix(lines: UsageLine[], prefix: string) {
+  return lines.filter((line) => line.nodeId.startsWith(prefix));
+}
+
+function usageTotalsForNodePrefix(lines: UsageLine[], prefix: string) {
+  const matching = usageForNodePrefix(lines, prefix).map(toCostLineItem).filter(Boolean) as CostLineItem[];
+
+  return matching.reduce(
+    (total, item) => ({
+      subtotal: Number((total.subtotal + item.subtotal).toFixed(6)),
+      tokens: total.tokens + item.tokens,
+    }),
+    {
+      subtotal: 0,
+      tokens: 0,
+    },
+  );
+}
+
 function refineStructuredAnswer(question: string, content: StructuredAnswer): StructuredAnswer {
   if (/(what should input_screen check|input_screen check)/i.test(question)) {
     return {
@@ -1173,6 +1224,7 @@ async function generateStructuredAnswer(
   question: string,
   provenance: ProvenanceItem[],
   chatModel: ChatOpenAI,
+  revisionInstruction = "",
 ): Promise<{ content: StructuredAnswer; usage: RawUsage | null }> {
   const prompt = ChatPromptTemplate.fromMessages([
     [
@@ -1187,6 +1239,9 @@ async function generateStructuredAnswer(
         "",
         "Context:",
         "{context}",
+        "",
+        "Revision instruction:",
+        "{revisionInstruction}",
         "",
         "Answer hint:",
         "{hint}",
@@ -1210,6 +1265,7 @@ async function generateStructuredAnswer(
   const response = (await runnable.invoke({
     question,
     context: promptSources.context,
+    revisionInstruction: revisionInstruction || "None. This is the first draft.",
     hint: answerHint(question),
   })) as {
     parsed: StructuredAnswer;
@@ -1350,10 +1406,11 @@ function buildActualGraphPipeline(context: RunContext) {
   const usageByNode = new Map(context.usageLines.map((line) => [line.nodeId, toCostLineItem(line)]));
   const indexCost = usageByNode.get("INDEX_EMBEDDINGS")?.subtotal ?? 0;
   const queryCost = usageByNode.get("QUERY_EMBEDDING")?.subtotal ?? 0;
-  const answerCost = usageByNode.get("ANSWER_MODEL")?.subtotal ?? 0;
+  const answerTotals = usageTotalsForNodePrefix(context.usageLines, "ANSWER_MODEL");
   const indexTokens = usageByNode.get("INDEX_EMBEDDINGS")?.tokens ?? 0;
   const queryTokens = usageByNode.get("QUERY_EMBEDDING")?.tokens ?? 0;
-  const answerTokens = usageByNode.get("ANSWER_MODEL")?.tokens ?? 0;
+  const answerTokens = answerTotals.tokens;
+  const answerCost = answerTotals.subtotal;
 
   return [
     pipelineNode(
@@ -1465,7 +1522,9 @@ function finalizeLiveResult(mode: DemoMode, question: string, context: RunContex
   const cost = actualCostEstimate(context.usageLines, mode, context.vectorStore, context.indexBuiltThisRun);
   const pipeline = mode === "chain" ? buildActualChainPipeline(context) : buildActualGraphPipeline(context);
   const guardrails = mergeGuardrails(context.input, context.output);
-  const answerModelUsage = context.usageLines.find((line) => line.nodeId === "ANSWER_MODEL")?.usage;
+  const answerModelUsage = [...context.usageLines]
+    .reverse()
+    .find((line) => line.nodeId.startsWith("ANSWER_MODEL"))?.usage;
   const totalInput = context.usageLines.reduce((sum, line) => sum + line.usage.inputTokens, 0);
   const totalOutput = context.usageLines.reduce((sum, line) => sum + line.usage.outputTokens, 0);
   const totalTokens = context.usageLines.reduce((sum, line) => sum + line.usage.totalTokens, 0);
@@ -1862,6 +1921,14 @@ async function runLiveGraph(question: string, sourceNotes?: string): Promise<Dem
       reducer: (_left, right) => right,
       default: () => "",
     }),
+    draftAttempts: Annotation<number>({
+      reducer: (_left, right) => right,
+      default: () => 0,
+    }),
+    redraftInstruction: Annotation<string>({
+      reducer: (_left, right) => right,
+      default: () => "",
+    }),
     output: Annotation<GuardCheck | null>({
       reducer: (_left, right) => right,
       default: () => null,
@@ -1939,12 +2006,19 @@ async function runLiveGraph(question: string, sourceNotes?: string): Promise<Dem
         return {};
       }
 
-      const generated = await generateStructuredAnswer("graph", state.safeQuestion, state.provenance, chatModel);
+      const attemptNumber = state.draftAttempts + 1;
+      const generated = await generateStructuredAnswer(
+        "graph",
+        state.safeQuestion,
+        state.provenance,
+        chatModel,
+        state.redraftInstruction,
+      );
 
       if (generated.usage) {
         usageLines.push({
-          nodeId: "ANSWER_MODEL",
-          label: `Answer model (${generated.usage.model})`,
+          nodeId: `ANSWER_MODEL_ATTEMPT_${attemptNumber}`,
+          label: `Answer model attempt ${attemptNumber} (${generated.usage.model})`,
           usage: generated.usage,
         });
       }
@@ -1953,11 +2027,32 @@ async function runLiveGraph(question: string, sourceNotes?: string): Promise<Dem
         answer: generated.content.answer,
         takeaways: generated.content.takeaways,
         speakerTip: generated.content.speakerTip,
+        draftAttempts: attemptNumber,
+        redraftInstruction: "",
       };
     })
-    .addNode("OUTPUT_GUARD", async (state: typeof GraphAnnotation.State) => ({
-      output: outputGuard(state.answer),
-    }))
+    .addNode("OUTPUT_GUARD", async (state: typeof GraphAnnotation.State) => {
+      const output = outputGuard(state.answer);
+
+      if (
+        output.status === "block" &&
+        !output.triggeredRules.includes("canary_leak") &&
+        state.decision !== "block" &&
+        state.decision !== "review" &&
+        state.draftAttempts < 2
+      ) {
+        return {
+          output,
+          redraftInstruction: outputRetryInstruction(output),
+          route: withOutputRetryRoute(state.route),
+          speakerTip: "OutputGuard rejected the first draft, so the graph looped back and asked for a safer rewrite.",
+        };
+      }
+
+      return {
+        output,
+      };
+    })
     .addNode("AUDIT_LOG", async (state: typeof GraphAnnotation.State) => state)
     .addEdge(START, "INPUT_SCREEN")
     .addEdge("INPUT_SCREEN", "RETRIEVE_CONTEXT")
@@ -1965,7 +2060,14 @@ async function runLiveGraph(question: string, sourceNotes?: string): Promise<Dem
     .addEdge("PROVENANCE_ATTACH", "DECIDE_ROUTE")
     .addEdge("DECIDE_ROUTE", "DRAFT_ANSWER")
     .addEdge("DRAFT_ANSWER", "OUTPUT_GUARD")
-    .addEdge("OUTPUT_GUARD", "AUDIT_LOG")
+    .addConditionalEdges(
+      "OUTPUT_GUARD",
+      (state) => (shouldRetryAfterOutputGuard(state as GraphWorkflowState) ? "DRAFT_ANSWER" : "AUDIT_LOG"),
+      {
+        DRAFT_ANSWER: "DRAFT_ANSWER",
+        AUDIT_LOG: "AUDIT_LOG",
+      },
+    )
     .addEdge("AUDIT_LOG", END)
     .compile();
 
@@ -1982,6 +2084,8 @@ async function runLiveGraph(question: string, sourceNotes?: string): Promise<Dem
     answer: "",
     takeaways: [],
     speakerTip: "",
+    draftAttempts: 0,
+    redraftInstruction: "",
     output: null,
   })) as GraphWorkflowState;
 
@@ -2021,7 +2125,9 @@ async function runLiveGraph(question: string, sourceNotes?: string): Promise<Dem
     indexBuiltThisRun: index.indexBuiltThisRun,
     normalizedQuestion,
     safeQuestion,
-    runtimeNotes: runtimeNotes("graph", index.vectorStore, index.indexBuiltThisRun),
+    runtimeNotes: graphState.route.includes("DRAFT_ANSWER (retry)")
+      ? [...runtimeNotes("graph", index.vectorStore, index.indexBuiltThisRun), "OutputGuard sent the graph back to DRAFT_ANSWER once for a safer retry."]
+      : runtimeNotes("graph", index.vectorStore, index.indexBuiltThisRun),
     graphState: buildGraphState(question, safeQuestion, input, graphState.provenance, finalDecision),
   });
 }
