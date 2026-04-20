@@ -40,7 +40,8 @@ OPENAI_API_KEY=your_key_here
 OPENAI_MODEL=gpt-4.1-mini
 ```
 
-If `OPENAI_API_KEY` is missing, the site falls back to the built-in explainer automatically.
+If `OPENAI_API_KEY` is missing, the site falls back to the local workflow automatically.
+If `PINECONE_API_KEY` and `PINECONE_INDEX` are missing, live mode still works by using a real in-memory vector index.
 
 ## What makes the site useful for the talk
 
@@ -57,6 +58,6 @@ If `OPENAI_API_KEY` is missing, the site falls back to the built-in explainer au
 - `components/demo-shell.tsx` is the main phase-based workbench UI.
 - `app/api/demo/route.ts` serves the live result, evaluation overview, and audit history.
 - `lib/demo-engine.ts` runs the local LangChain-style and LangGraph-style flows.
+- `lib/live-runtime.ts` runs the real LangChain and LangGraph workflows, live evaluation suite, and retrieval backends.
 - `lib/demo-data.ts` contains the source notes, phase content, evaluation suite, and ADD text.
-- `lib/openai-explainer.ts` optionally rewrites the final explanation with the OpenAI Responses API.
 - `docs/architecture-decision-document.md` contains the written ADD.

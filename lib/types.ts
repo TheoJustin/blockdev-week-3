@@ -79,6 +79,8 @@ export type CostLineItem = {
   tokens: number;
   ratePerMillion: number;
   subtotal: number;
+  inputTokens?: number;
+  outputTokens?: number;
 };
 
 export type CostEstimate = {
@@ -87,6 +89,8 @@ export type CostEstimate = {
   latencyMs: number;
   breakdown: CostLineItem[];
   assumptions: string[];
+  costKind: "actual" | "simulated" | "none";
+  latencyKind: "measured" | "simulated";
 };
 
 export type LiveUsage = {
@@ -96,6 +100,13 @@ export type LiveUsage = {
   totalTokens: number;
   note: string;
   status: "used" | "not_configured" | "fallback";
+};
+
+export type ImplementationStatus = {
+  engine: "simulated" | "langchain" | "langgraph";
+  vectorStore: "simulated" | "pinecone" | "in_memory";
+  indexBuiltThisRun: boolean;
+  notes: string[];
 };
 
 export type GraphState = {
@@ -129,6 +140,7 @@ export type DemoResult = {
   generatedAt: string;
   canaryScenario: boolean;
   graphState: GraphState | null;
+  implementation: ImplementationStatus;
   liveUsage?: LiveUsage;
 };
 
@@ -191,12 +203,19 @@ export type SlideEstimate = {
   note: string;
 };
 
+export type OverviewSource = "live" | "simulated";
+export type OverviewStatus = "ready" | "running" | "error";
+
 export type DemoOverview = {
   evaluations: {
-    chain: EvaluationReport;
-    graph: EvaluationReport;
+    chain: EvaluationReport | null;
+    graph: EvaluationReport | null;
   };
   slideEstimate: SlideEstimate;
+  source: OverviewSource;
+  status: OverviewStatus;
+  notes: string[];
+  updatedAt?: string;
 };
 
 export type StoredAuditRecord = {
@@ -210,4 +229,6 @@ export type StoredAuditRecord = {
   sourceCount: number;
   usedSampleNotes: boolean;
   sources: string[];
+  latencyMs?: number;
+  perInteractionCost?: number;
 };

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useDeferredValue, useState, useTransition } from "react";
+import { useCallback, useDeferredValue, useEffect, useState, useTransition } from "react";
 import { Download, RefreshCw, Sparkles, Workflow } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
@@ -89,7 +89,15 @@ function decisionLabel(value: DemoResult["decision"]) {
 }
 
 function runtimeLabel(value: DemoRuntime) {
-  return value === "openai" ? "OpenAI response" : "Local response";
+  return value === "openai" ? "Live backend" : "Local fallback";
+}
+
+function costSummaryValue(cost: DemoResult["cost"]) {
+  if (cost.costKind === "none") {
+    return "Not billed";
+  }
+
+  return formatMoney(cost.per1000);
 }
 
 function decisionVariant(value: DemoResult["decision"]): BadgeProps["variant"] {
@@ -233,20 +241,27 @@ export function DemoShell({
   const [openaiModel, setOpenaiModel] = useState("gpt-4.1-mini");
   const [activePanel, setActivePanel] = useState<ResultPanel>("summary");
   const [showSourceNotes, setShowSourceNotes] = useState(false);
+  const [didChooseRuntime, setDidChooseRuntime] = useState(false);
   const [, startTransition] = useTransition();
 
   const deferredQuestion = useDeferredValue(question);
   const deferredSourceNotes = useDeferredValue(sourceNotes);
 
-  useEffect(() => {
-    void refreshAppState();
-  }, []);
-
-  async function refreshAppState() {
+  const refreshAppState = useCallback(async (nextRuntime?: DemoRuntime, nextSourceNotes?: string) => {
     setIsRefreshing(true);
 
     try {
-      const response = await fetch("/api/demo");
+      const params = new URLSearchParams();
+
+      if (nextRuntime) {
+        params.set("runtime", nextRuntime);
+      }
+
+      if (nextSourceNotes?.trim()) {
+        params.set("sourceNotes", nextSourceNotes);
+      }
+
+      const response = await fetch(params.size > 0 ? `/api/demo?${params.toString()}` : "/api/demo");
       const payload = (await response.json()) as {
         recent?: StoredAuditRecord[];
         overview?: DemoOverview;
@@ -260,10 +275,34 @@ export function DemoShell({
       setOverview(payload.overview ?? null);
       setOpenaiConfigured(Boolean(payload.openai?.configured));
       setOpenaiModel(payload.openai?.model ?? "gpt-4.1-mini");
+
+      if (payload.openai?.configured && !didChooseRuntime) {
+        setRuntime("openai");
+      }
     } finally {
       setIsRefreshing(false);
     }
-  }
+  }, [didChooseRuntime]);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      void refreshAppState();
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [refreshAppState]);
+
+  useEffect(() => {
+    if (overview?.status !== "running") {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      void refreshAppState(runtime, sourceNotes);
+    }, 4000);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [overview?.status, refreshAppState, runtime, sourceNotes]);
 
   async function runDemo(nextMode: DemoMode) {
     if (!question.trim()) {
@@ -326,14 +365,42 @@ export function DemoShell({
     }
 
     const rows = [
-      ["mode", "node", "status", "tokens", "subtotal", "decision", "timestamp"].join(","),
-      ...result.pipeline.map((node) =>
+      [
+        "mode",
+        "component",
+        "input_tokens",
+        "output_tokens",
+        "total_tokens",
+        "rate_per_million",
+        "subtotal",
+        "cost_kind",
+        "latency_ms",
+        "decision",
+        "timestamp",
+      ].join(","),
+      ...(result.cost.breakdown.length > 0
+        ? result.cost.breakdown
+        : [
+            {
+              nodeId: "LOCAL_RUNTIME",
+              label: result.runtime === "local" ? "Local runtime" : "No billed model call",
+              tokens: 0,
+              inputTokens: 0,
+              outputTokens: 0,
+              ratePerMillion: 0,
+              subtotal: result.cost.perInteraction,
+            },
+          ]).map((item) =>
         [
           result.mode,
-          node.label,
-          node.status,
-          String(node.estimatedTokens),
-          String(node.estimatedCost.toFixed(4)),
+          item.label,
+          String(item.inputTokens ?? 0),
+          String(item.outputTokens ?? 0),
+          String(item.tokens),
+          String(item.ratePerMillion),
+          String(item.subtotal.toFixed(6)),
+          result.cost.costKind,
+          String(result.cost.latencyMs),
           result.decision,
           result.generatedAt,
         ].join(","),
@@ -350,8 +417,12 @@ export function DemoShell({
 
   const sourceCount = countSourceNotes(deferredSourceNotes);
   const activeEvaluation = overview?.evaluations[mode] ?? null;
-  const chainDelta = overview ? overview.evaluations.chain.averagePer1000 - overview.slideEstimate.chainPer1000 : 0;
-  const graphDelta = overview ? overview.evaluations.graph.averagePer1000 - overview.slideEstimate.graphPer1000 : 0;
+  const chainDelta =
+    overview?.evaluations.chain ? overview.evaluations.chain.averagePer1000 - overview.slideEstimate.chainPer1000 : 0;
+  const graphDelta =
+    overview?.evaluations.graph ? overview.evaluations.graph.averagePer1000 - overview.slideEstimate.graphPer1000 : 0;
+  const overviewUsesLiveBackend = overview?.source === "live";
+  const overviewNote = overview?.notes[0] ?? null;
 
   const modeDescription =
     mode === "chain"
@@ -367,9 +438,9 @@ export function DemoShell({
           steps: result.route.includes("->") ? formatRouteSteps(result.route) : undefined,
         },
         {
-          label: "Cost per 1,000",
-          value: formatMoney(result.cost.per1000),
-          description: `Estimated latency: ${result.cost.latencyMs} ms`,
+          label: result.cost.costKind === "actual" ? "Actual cost per 1,000" : "Model cost",
+          value: costSummaryValue(result.cost),
+          description: `${result.cost.latencyKind === "measured" ? "Measured" : "Estimated"} latency: ${result.cost.latencyMs} ms`,
         },
         {
           label: "Sources",
@@ -506,14 +577,20 @@ export function DemoShell({
                   <div className="flex flex-col gap-3 sm:flex-row">
                     <ChoiceCard
                       active={runtime === "local"}
-                      description="Uses the built-in explainer on the server"
-                      onClick={() => setRuntime("local")}
+                      description="Runs the local fallback workflow with simulated cost."
+                      onClick={() => {
+                        setDidChooseRuntime(true);
+                        setRuntime("local");
+                      }}
                       title="Local response"
                     />
                     <ChoiceCard
                       active={runtime === "openai"}
-                      description={openaiConfigured ? openaiModel : "Falls back if no key is set"}
-                      onClick={() => setRuntime("openai")}
+                      description={openaiConfigured ? `Real LangChain / LangGraph with ${openaiModel}` : "Requires OPENAI_API_KEY"}
+                      onClick={() => {
+                        setDidChooseRuntime(true);
+                        setRuntime("openai");
+                      }}
                       title="OpenAI response"
                     />
                   </div>
@@ -523,8 +600,8 @@ export function DemoShell({
                     </p>
                     <p className="mt-1 text-sm leading-6 text-muted-foreground">
                       {openaiConfigured
-                        ? `Server model: ${openaiModel}`
-                        : "The app still works without OPENAI_API_KEY. OpenAI mode only changes the final explanation."}
+                        ? `Server model: ${openaiModel}. OpenAI mode runs the real LangChain or LangGraph backend.`
+                        : "The app still works without OPENAI_API_KEY by using the local fallback workflow instead."}
                     </p>
                   </div>
                 </div>
@@ -660,6 +737,20 @@ export function DemoShell({
                       <Badge className="rounded-full" variant="outline">
                         {runtimeLabel(result.runtime)}
                       </Badge>
+                      <Badge className="rounded-full" variant="outline">
+                        {result.implementation.engine === "langgraph"
+                          ? "Real LangGraph"
+                          : result.implementation.engine === "langchain"
+                            ? "Real LangChain"
+                            : "Simulated engine"}
+                      </Badge>
+                      <Badge className="rounded-full" variant="outline">
+                        {result.implementation.vectorStore === "pinecone"
+                          ? "Pinecone"
+                          : result.implementation.vectorStore === "in_memory"
+                            ? "In-memory index"
+                            : "Simulated retrieval"}
+                      </Badge>
                     </div>
                   ) : null}
                 </div>
@@ -750,6 +841,25 @@ export function DemoShell({
                               <div className="rounded-2xl border border-border/70 bg-background px-4 py-4 text-sm leading-7 text-muted-foreground">
                                 {result.speakerTip.replace(/^Talk track:\s*/i, "")}
                               </div>
+                            </CardContent>
+                          </Card>
+
+                          <Card className="border-border/70 bg-muted/20 shadow-none">
+                            <CardHeader>
+                              <CardTitle className="text-lg">Runtime status</CardTitle>
+                              <CardDescription className="text-sm leading-6">
+                                This tells you exactly what was real in the run.
+                              </CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-3">
+                              {result.implementation.notes.map((note) => (
+                                <div
+                                  className="rounded-2xl border border-border/70 bg-background px-4 py-3 text-sm leading-6 text-muted-foreground"
+                                  key={note}
+                                >
+                                  {note}
+                                </div>
+                              ))}
                             </CardContent>
                           </Card>
                         </div>
@@ -939,61 +1049,71 @@ export function DemoShell({
                       <div className="space-y-6">
                         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                           <MetricCard
-                            description={overview?.slideEstimate.note ?? "Reference benchmark"}
-                            label="Chain benchmark"
+                            description="Presentation deck estimate"
+                            label="Chain estimate"
                             value={overview ? formatMoney(overview.slideEstimate.chainPer1000) : "--"}
                           />
                           <MetricCard
-                            description={overview?.slideEstimate.note ?? "Reference benchmark"}
-                            label="Graph benchmark"
+                            description="Presentation deck estimate"
+                            label="Graph estimate"
                             value={overview ? formatMoney(overview.slideEstimate.graphPer1000) : "--"}
                           />
                           <MetricCard
-                            description="Average suite delta versus the benchmark"
+                            description={overviewUsesLiveBackend ? "Live suite delta versus the deck estimate" : "Local fallback delta versus the deck estimate"}
                             label="Chain delta"
-                            value={overview ? formatDelta(chainDelta) : "--"}
+                            value={overview?.evaluations.chain ? formatDelta(chainDelta) : "--"}
                           />
                           <MetricCard
-                            description="Average suite delta versus the benchmark"
+                            description={overviewUsesLiveBackend ? "Live suite delta versus the deck estimate" : "Local fallback delta versus the deck estimate"}
                             label="Graph delta"
-                            value={overview ? formatDelta(graphDelta) : "--"}
+                            value={overview?.evaluations.graph ? formatDelta(graphDelta) : "--"}
                           />
                         </div>
 
                         <Card className="border-border/70 bg-muted/20 shadow-none">
                           <CardHeader>
-                            <CardTitle className="text-lg">Node-level token cost</CardTitle>
+                            <CardTitle className="text-lg">Billable components</CardTitle>
                             <CardDescription className="text-sm leading-6">
-                              Each node reports an estimated token load so the cost story is easy to justify.
+                              {result.cost.costKind === "actual"
+                                ? "This table shows the billable embedding and model calls from the current run."
+                                : result.cost.costKind === "none"
+                                  ? "This run did not make a billable external model call."
+                                  : "Pricing is still simulated because the current model does not have configured live rates."}
                             </CardDescription>
                           </CardHeader>
                           <CardContent>
-                            <div className="rounded-2xl border border-border/70 bg-background">
-                              <Table>
-                                <TableHeader>
-                                  <TableRow>
-                                    <TableHead>Node</TableHead>
-                                    <TableHead>Status</TableHead>
-                                    <TableHead>Tokens</TableHead>
-                                    <TableHead>Subtotal</TableHead>
-                                  </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                  {result.pipeline.map((node) => (
-                                    <TableRow key={node.id}>
-                                      <TableCell className="font-medium">{node.label}</TableCell>
-                                      <TableCell>
-                                        <Badge className="rounded-full" variant={pipelineBadgeVariant(node.status)}>
-                                          {node.status}
-                                        </Badge>
-                                      </TableCell>
-                                      <TableCell>{node.estimatedTokens}</TableCell>
-                                      <TableCell>{formatMoney(node.estimatedCost)}</TableCell>
+                            {result.cost.breakdown.length > 0 ? (
+                              <div className="rounded-2xl border border-border/70 bg-background">
+                                <Table>
+                                  <TableHeader>
+                                    <TableRow>
+                                      <TableHead>Component</TableHead>
+                                      <TableHead>Input</TableHead>
+                                      <TableHead>Output</TableHead>
+                                      <TableHead>Total</TableHead>
+                                      <TableHead>Subtotal</TableHead>
                                     </TableRow>
-                                  ))}
-                                </TableBody>
-                              </Table>
-                            </div>
+                                  </TableHeader>
+                                  <TableBody>
+                                    {result.cost.breakdown.map((item) => (
+                                      <TableRow key={item.nodeId}>
+                                        <TableCell className="font-medium">{item.label}</TableCell>
+                                        <TableCell>{item.inputTokens ?? "--"}</TableCell>
+                                        <TableCell>{item.outputTokens ?? "--"}</TableCell>
+                                        <TableCell>{item.tokens}</TableCell>
+                                        <TableCell>{formatMoney(item.subtotal)}</TableCell>
+                                      </TableRow>
+                                    ))}
+                                  </TableBody>
+                                </Table>
+                              </div>
+                            ) : (
+                              <div className="rounded-2xl border border-dashed border-border px-4 py-8 text-sm text-muted-foreground">
+                                {result.runtime === "local"
+                                  ? "Local mode uses the fallback workflow, so there is no external model bill for this run."
+                                  : "This run did not produce a billable OpenAI usage record."}
+                              </div>
+                            )}
                           </CardContent>
                         </Card>
 
@@ -1103,18 +1223,44 @@ export function DemoShell({
         <section className="grid gap-6">
           <Card className="border-border/70 bg-card/95">
             <CardHeader>
-              <Badge className="w-fit rounded-full" variant="outline">
+              <Badge className="w-fit rounded-full" variant={overviewUsesLiveBackend ? "secondary" : "outline"}>
                 Phase 1 scorecard
               </Badge>
               <CardTitle className="text-2xl">Fire the 10 test questions and check the answers</CardTitle>
               <CardDescription className="text-sm leading-6">
-                Keep the evaluation table below the main workspace so the primary run stays easy to
-                follow.
+                {overview?.status === "running"
+                  ? "The live evaluation suite is running in the background. The table updates automatically when it finishes."
+                  : "Keep the evaluation table below the main workspace so the primary run stays easy to follow."}
               </CardDescription>
             </CardHeader>
             <CardContent>
+              {overviewNote ? (
+                <div className="mb-4 rounded-2xl border border-border/70 bg-muted/20 px-4 py-3 text-sm leading-6 text-muted-foreground">
+                  {overviewNote}
+                </div>
+              ) : null}
+
               {activeEvaluation ? (
-                <div className="rounded-2xl border border-border/70">
+                <div className="space-y-4">
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <MetricCard
+                      description={overviewUsesLiveBackend ? "Measured pass rate from the live suite" : "Pass rate from the local fallback suite"}
+                      label="Accuracy"
+                      value={`${activeEvaluation.accuracy}%`}
+                    />
+                    <MetricCard
+                      description="Average cost per 1,000 questions in this suite"
+                      label="Average cost"
+                      value={formatMoney(activeEvaluation.averagePer1000)}
+                    />
+                    <MetricCard
+                      description="Average latency across the evaluation questions"
+                      label="Average latency"
+                      value={`${activeEvaluation.averageLatencyMs} ms`}
+                    />
+                  </div>
+
+                  <div className="rounded-2xl border border-border/70">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -1150,9 +1296,14 @@ export function DemoShell({
                     </TableBody>
                   </Table>
                 </div>
+                </div>
               ) : (
                 <div className="rounded-2xl border border-dashed border-border px-4 py-10 text-sm text-muted-foreground">
-                  Loading the built-in evaluation suite.
+                  {overview?.status === "error"
+                    ? overview.notes.join(" ")
+                    : overview?.status === "running"
+                      ? "Running the live evaluation suite now."
+                      : "Loading the evaluation suite."}
                 </div>
               )}
             </CardContent>

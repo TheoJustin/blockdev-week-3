@@ -729,12 +729,14 @@ function buildCostEstimate(nodes: PipelineNode[], mode: DemoMode, decision: Deci
     latencyMs: mode === "chain" ? 1100 + nodes.length * 65 : (decision === "block" ? 1450 : 1900) + nodes.length * 75,
     breakdown,
     assumptions: [
-      "These are model-based estimates, not vendor invoices.",
+      "These are simulated workflow estimates, not billed vendor costs.",
       "The chain path concentrates cost in retrieval and answer generation.",
       mode === "chain"
         ? "The chain stays cheaper because it has fewer explicit decision nodes."
         : "The graph costs more because screening, provenance, and audit are explicit nodes.",
     ],
+    costKind: "simulated",
+    latencyKind: "simulated",
   };
 }
 
@@ -1053,6 +1055,15 @@ function finalizeResult(
     generatedAt: new Date().toISOString(),
     canaryScenario,
     graphState: mode === "graph" ? buildGraphState(question, normalizedQuestion, input, provenance, finalDecision) : null,
+    implementation: {
+      engine: "simulated",
+      vectorStore: "simulated",
+      indexBuiltThisRun: false,
+      notes: [
+        "This is the built-in local fallback path for explaining the workflow without live API calls.",
+        "Retrieval, routing, and cost are simulated in local mode.",
+      ],
+    },
   };
 }
 
@@ -1193,5 +1204,12 @@ export function buildDemoOverview(sourceNotes?: string): DemoOverview {
       graph: runEvaluationSuite("graph", sourceNotes),
     },
     slideEstimate,
+    source: "simulated",
+    status: "ready",
+    notes: [
+      "This scorecard uses the local fallback workflow.",
+      "Accuracy, cost, and latency in local mode are simulated so the site can still teach the flow without live API calls.",
+    ],
+    updatedAt: new Date().toISOString(),
   };
 }

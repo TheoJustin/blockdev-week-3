@@ -23,6 +23,8 @@ export async function appendAuditRecord(result: DemoResult) {
     sourceCount: result.sourceCount,
     usedSampleNotes: result.usedSampleNotes,
     sources: result.provenance.map((item) => item.title),
+    latencyMs: result.cost.latencyMs,
+    perInteractionCost: result.cost.perInteraction,
   };
 
   await fs.appendFile(auditFile, `${JSON.stringify(record)}\n`, "utf8");
@@ -49,6 +51,8 @@ export async function readRecentAuditRecords(limit = 6) {
           sourceCount: parsed.sourceCount ?? parsed.sources?.length ?? 0,
           usedSampleNotes: parsed.usedSampleNotes ?? false,
           sources: parsed.sources ?? [],
+          latencyMs: parsed.latencyMs,
+          perInteractionCost: parsed.perInteractionCost,
         } satisfies StoredAuditRecord;
       })
       .slice(-limit)
